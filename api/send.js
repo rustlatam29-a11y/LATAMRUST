@@ -1,3 +1,4 @@
+// Updated: 2026-01-06 20:35:36
 // Servidor Proxy TRANSPARENTE para proteger Webhooks de Discord
 // Reenvía TODA la data tal cual llega (multipart, json, etc)
 
