@@ -1,12 +1,20 @@
-{
+﻿{
   "version": 2,
   "builds": [
     {
-      "src": "api/send.js",
+      "src": "api/*.js",
       "use": "@vercel/node"
     }
   ],
   "routes": [
+    {
+      "src": "/api/insert",
+      "dest": "api/insert.js"
+    },
+    {
+      "src": "/api/capturas",
+      "dest": "api/capturas.js"
+    },
     {
       "src": "/api/send",
       "dest": "api/send.js"

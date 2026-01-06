@@ -1,4 +1,4 @@
-// Endpoint para webhook INSERT
+﻿// Endpoint para webhook INSERT - Soporte completo para multipart/form-data
 const https = require('https');
 
 const WEBHOOK_URL = "https://discord.com/api/webhooks/1429918486783594586/N00BIvZbVDLyVYoIpqE23X6g7g-QlEXZLZWS8MngVKDB9FYAl33uhia0sgF6bPA4ylXI";
@@ -13,22 +13,29 @@ module.exports = async (req, res) => {
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Método no permitido' });
+    return res.status(405).json({ error: 'Metodo no permitido' });
   }
 
-  const url = new URL(WEBHOOK_URL);
-  const options = {
-    hostname: url.hostname,
-    port: 443,
-    path: url.pathname,
-    method: 'POST',
-    headers: {
-      'Content-Type': req.headers['content-type'] || 'application/json',
-      'Content-Length': req.headers['content-length']
-    }
-  };
-
   return new Promise((resolve, reject) => {
+    const url = new URL(WEBHOOK_URL);
+    
+    // Copiar TODOS los headers del request original (incluido Content-Type con boundary)
+    const headers = {};
+    Object.keys(req.headers).forEach(key => {
+      // Copiar todos excepto host
+      if (key.toLowerCase() !== 'host') {
+        headers[key] = req.headers[key];
+      }
+    });
+
+    const options = {
+      hostname: url.hostname,
+      port: 443,
+      path: url.pathname + url.search,
+      method: 'POST',
+      headers: headers
+    };
+
     const proxyReq = https.request(options, (proxyRes) => {
       let responseData = '';
       
@@ -40,7 +47,7 @@ module.exports = async (req, res) => {
         res.status(proxyRes.statusCode);
         
         if (proxyRes.statusCode === 204 || proxyRes.statusCode === 200) {
-          res.json({ success: true, message: 'Enviado correctamente' });
+          res.json({ success: true, message: 'Enviado correctamente a Discord' });
         } else {
           res.send(responseData);
         }
@@ -50,10 +57,15 @@ module.exports = async (req, res) => {
     });
 
     proxyReq.on('error', (error) => {
-      res.status(500).json({ error: 'Error al conectar con Discord', message: error.message });
+      console.error('Error al reenviar a Discord:', error);
+      res.status(500).json({ 
+        error: 'Error al conectar con Discord', 
+        message: error.message 
+      });
       reject(error);
     });
 
+    // Reenviar el body completo (funciona con multipart)
     req.pipe(proxyReq);
   });
 };
