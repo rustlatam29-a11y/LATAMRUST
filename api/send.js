@@ -28,14 +28,17 @@ module.exports = async (req, res) => {
   }
 
   try {
-    // Obtener webhook_id de la query string
-    const webhook_id = req.query.webhook_id;
+    // Obtener webhook_id de la URL (después del /api/send?webhook_id=XXX)
+    const url = new URL(req.url, `https://${req.headers.host}`);
+    const webhook_id = url.searchParams.get('webhook_id');
 
     // Validar que se especificó un webhook válido
     if (!webhook_id || !WEBHOOKS[webhook_id]) {
       return res.status(400).json({ 
         error: 'webhook_id inválido o no especificado',
-        valid_ids: Object.keys(WEBHOOKS)
+        valid_ids: Object.keys(WEBHOOKS),
+        received: webhook_id,
+        url: req.url
       });
     }
 
