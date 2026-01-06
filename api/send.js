@@ -1,7 +1,8 @@
-// Servidor Proxy para proteger Webhooks de Discord
-// Este código ofusca tus webhooks reales
+// Servidor Proxy TRANSPARENTE para proteger Webhooks de Discord
+// Reenvía TODA la data tal cual llega (multipart, json, etc)
 
-const fetch = require('node-fetch');
+const https = require('https');
+const http = require('http');
 
 // WEBHOOKS REALES - PROTEGIDOS POR EL PROXY
 const WEBHOOKS = {
@@ -10,10 +11,10 @@ const WEBHOOKS = {
 };
 
 module.exports = async (req, res) => {
-  // Configurar CORS para permitir peticiones desde tu aplicación
+  // Configurar CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', '*');
 
   // Manejar preflight OPTIONS
   if (req.method === 'OPTIONS') {
@@ -26,61 +27,76 @@ module.exports = async (req, res) => {
   }
 
   try {
-    // Obtener datos del body
-    const { webhook_id, content, embeds, username, avatar_url } = req.body;
+    // Obtener webhook_id de la query string
+    const webhook_id = req.query.webhook_id;
 
     // Validar que se especificó un webhook válido
     if (!webhook_id || !WEBHOOKS[webhook_id]) {
       return res.status(400).json({ 
-        error: 'webhook_id inválido',
+        error: 'webhook_id inválido o no especificado',
         valid_ids: Object.keys(WEBHOOKS)
       });
     }
 
-    // Validar que hay contenido
-    if (!content && !embeds) {
-      return res.status(400).json({ 
-        error: 'Debe incluir content o embeds' 
-      });
-    }
-
-    // Construir el payload para Discord
-    const payload = {
-      content: content || '',
-      username: username || 'LatamZ Bot',
-      avatar_url: avatar_url || ''
-    };
-
-    // Agregar embeds si existen
-    if (embeds) {
-      payload.embeds = embeds;
-    }
-
-    // Enviar al webhook real de Discord
+    // Obtener el webhook real
     const webhookUrl = WEBHOOKS[webhook_id];
-    const response = await fetch(webhookUrl, {
+    const url = new URL(webhookUrl);
+
+    // Preparar opciones para la petición
+    const options = {
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: url.pathname + url.search,
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
+        'Content-Type': req.headers['content-type'] || 'application/json',
+        'Content-Length': req.headers['content-length']
+      }
+    };
 
-    // Verificar respuesta de Discord
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error de Discord:', errorText);
-      return res.status(response.status).json({ 
-        error: 'Error al enviar a Discord',
-        details: errorText 
+    // Crear promesa para manejar la petición
+    return new Promise((resolve, reject) => {
+      const proxyReq = https.request(options, (proxyRes) => {
+        let responseData = '';
+
+        proxyRes.on('data', (chunk) => {
+          responseData += chunk;
+        });
+
+        proxyRes.on('end', () => {
+          // Reenviar la respuesta de Discord
+          res.status(proxyRes.statusCode);
+          
+          // Copiar headers de respuesta
+          Object.keys(proxyRes.headers).forEach(key => {
+            res.setHeader(key, proxyRes.headers[key]);
+          });
+
+          if (proxyRes.statusCode === 204 || proxyRes.statusCode === 200) {
+            res.json({ 
+              success: true, 
+              message: 'Enviado correctamente',
+              webhook_used: webhook_id 
+            });
+          } else {
+            res.send(responseData);
+          }
+          
+          resolve();
+        });
       });
-    }
 
-    // Éxito
-    return res.status(200).json({ 
-      success: true,
-      message: 'Mensaje enviado correctamente',
-      webhook_used: webhook_id
+      proxyReq.on('error', (error) => {
+        console.error('Error al enviar a Discord:', error);
+        res.status(500).json({ 
+          error: 'Error al conectar con Discord',
+          message: error.message 
+        });
+        reject(error);
+      });
+
+      // Reenviar el body tal cual llega
+      req.pipe(proxyReq);
     });
 
   } catch (error) {
